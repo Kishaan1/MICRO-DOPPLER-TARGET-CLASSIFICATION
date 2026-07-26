@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MIL-SPEC RADAR TARGET CLASSIFIER | AEGIS C2 CONSOLE</title>
+    <!-- Google Fonts: Inter & Roboto Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=Roboto+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- CSS Styles -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="app-container">
+
+        <!-- HEADER BAR (MIL-SPEC C2 RADAR CONSOLE) -->
+        <header class="radar-header">
+            <div class="header-branding">
+                <div class="radar-sweep-icon">
+                    <div class="sweep-line"></div>
+                </div>
+                <div>
+                    <h1>TACTICAL RADAR TARGET CLASSIFIER</h1>
+                    <p class="subtitle">FMCW RADAR TIME-FREQUENCY SPECTROGRAM & PYTORCH CNN ENGINE</p>
+                </div>
+            </div>
+
+            <div class="header-status-group">
+                <div class="status-indicator online">
+                    <span class="pulse-dot"></span>
+                    <span class="status-text">SYS NOMINAL: ONLINE</span>
+                </div>
+                <div class="sys-clock" id="systemClock">--:--:-- UTC</div>
+            </div>
+        </header>
+
+        <!-- DASHBOARD SUMMARY METRICS -->
+        <section class="metrics-bar">
+            <div class="metric-card">
+                <div class="metric-icon"><i class="fa-solid fa-radar"></i></div>
+                <div class="metric-info">
+                    <span class="metric-label">TOTAL RADAR SCANS</span>
+                    <span class="metric-value" id="statTotalScans">0</span>
+                </div>
+            </div>
+
+            <div class="metric-card threat-card">
+                <div class="metric-icon"><i class="fa-solid fa-crosshairs"></i></div>
+                <div class="metric-info">
+                    <span class="metric-label">HOSTILE DRONE TRACKS</span>
+                    <span class="metric-value threat-color" id="statDroneThreats">0</span>
+                </div>
+            </div>
+
+            <div class="metric-card biological-card">
+                <div class="metric-icon"><i class="fa-solid fa-crow"></i></div>
+                <div class="metric-info">
+                    <span class="metric-label">SAFE BIRD TARGETS</span>
+                    <span class="metric-value bio-color" id="statBirdTargets">0</span>
+                </div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-icon"><i class="fa-solid fa-gauge-high"></i></div>
+                <div class="metric-info">
+                    <span class="metric-label">AVG CONFIDENCE</span>
+                    <span class="metric-value" id="statAvgConfidence">0.0%</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- MAIN OPERATIONAL GRID -->
+        <main class="main-grid">
+
+            <!-- LEFT COLUMN: SIGNAL SOURCE & CONTROLS -->
+            <section class="panel control-panel">
+                <div class="panel-header">
+                    <h2><i class="fa-solid fa-sliders"></i> [MOD-01: SIGNAL SOURCE & PARAMETERS]</h2>
+                </div>
+                <div class="panel-body">
+                    
+                    <!-- SYNTHETIC GENERATOR PRESETS -->
+                    <div class="control-group">
+                        <label class="group-label">BENCHMARK SYNTHETIC TARGETS</label>
+                        <div class="sample-btn-grid">
+                            <button class="btn btn-drone" id="btnGenDrone">
+                                <i class="fa-solid fa-helicopter"></i>
+                                <span>[ GENERATE DRONE TRACK ]</span>
+                                <small>PROP CHOP</small>
+                            </button>
+
+                            <button class="btn btn-bird" id="btnGenBird">
+                                <i class="fa-solid fa-crow"></i>
+                                <span>[ GENERATE BIRD TRACK ]</span>
+                                <small>WING FLAP</small>
+                            </button>
+
+                            <button class="btn btn-noise" id="btnGenNoise">
+                                <i class="fa-solid fa-wave-square"></i>
+                                <span>[ AMBIENT NOISE ]</span>
+                                <small>CLUTTER</small>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- SNR CONTROL SLIDER -->
+                    <div class="control-group">
+                        <div class="slider-header">
+                            <label for="snrSlider">SIGNAL-TO-NOISE RATIO (SNR):</label>
+                            <span id="snrValueDisplay">20 dB</span>
+                        </div>
+                        <input type="range" id="snrSlider" min="5" max="35" value="20" step="1">
+                    </div>
+
+                    <!-- FILE UPLOADER -->
+                    <div class="control-group">
+                        <label class="group-label">UPLOAD CUSTOM RADAR SIGNAL</label>
+                        <div class="drop-zone" id="dropZone">
+                            <i class="fa-solid fa-cloud-arrow-up drop-icon"></i>
+                            <p class="drop-text">DRAG & DROP RADAR TELEMETRY FILE</p>
+                            <span class="drop-subtext">SUPPORTED FORMATS: WAV, CSV, JSON</span>
+                            <input type="file" id="fileInput" accept=".wav,.csv,.txt,.json" class="file-input-hidden">
+                            <button class="btn btn-outline" onclick="document.getElementById('fileInput').click()">
+                                <i class="fa-solid fa-folder-open"></i> [ BROWSE FILES ]
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- SIGNAL PROCESSING CONFIG -->
+                    <div class="control-group config-box">
+                        <label class="group-label"><i class="fa-solid fa-gear"></i> STFT TRANSFORM CONFIG</label>
+                        <div class="config-row">
+                            <span>WINDOW (N_FFT): <strong>256</strong></span>
+                            <span>OVERLAP: <strong>75% (192)</strong></span>
+                        </div>
+                        <div class="config-row">
+                            <span>SAMPLING RATE: <strong>8,000 HZ</strong></span>
+                            <span>WINDOWING: <strong>HANN</strong></span>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+
+
+            <!-- CENTER COLUMN: SIGNAL VISUALIZERS -->
+            <section class="panel visualizer-panel">
+                <div class="panel-header">
+                    <h2><i class="fa-solid fa-chart-line"></i> [MOD-02: TIME-FREQUENCY VISUALIZER]</h2>
+                    <div class="tab-group">
+                        <button class="tab-btn active" id="tabImgSpectrogram">[ SPECTROGRAM ]</button>
+                        <button class="tab-btn" id="tabCanvasMatrix">[ HEATMAP CANVAS ]</button>
+                    </div>
+                </div>
+
+                <div class="panel-body viz-body">
+
+                    <!-- RAW TIME DOMAIN WAVEFORM CHART -->
+                    <div class="chart-container waveform-box">
+                        <div class="chart-title">
+                            <span><i class="fa-solid fa-wave-square"></i> FMCW TIME-DOMAIN BEAT WAVEFORM (AMPLITUDE VS TIME)</span>
+                            <span id="waveformStats" class="sub-badge">SAMPLES: 8000</span>
+                        </div>
+                        <div class="canvas-wrapper">
+                            <canvas id="waveformChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- 2D MICRO-DOPPLER SPECTROGRAM IMAGE / CANVAS -->
+                    <div class="chart-container spectrogram-box">
+                        <div class="chart-title">
+                            <span><i class="fa-solid fa-grip"></i> JOINT TIME-FREQUENCY MICRO-DOPPLER SPECTROGRAM (DB)</span>
+                            <span class="sub-badge cyan-badge">RES: 128X128</span>
+                        </div>
+                        
+                        <!-- Rendered Base64 PNG Spectrogram -->
+                        <div class="spectrogram-view active" id="spectrogramImgWrapper">
+                            <div class="spectrogram-placeholder" id="spectrogramPlaceholder">
+                                <div class="placeholder-icon-box">
+                                    <i class="fa-solid fa-radar fa-spin"></i>
+                                </div>
+                                <span class="placeholder-title">AWAITING STFT SPECTROGRAM MATRIX</span>
+                                <p class="placeholder-subtext">Upload a radar telemetry signal or select a benchmark target to compute 2D STFT matrix.</p>
+                            </div>
+                            <img id="spectrogramImg" src="" alt="Micro-Doppler Spectrogram" class="spectrogram-image placeholder-img" style="display:none;">
+                            <div class="img-overlay-spinner" id="imgSpinner" style="display:none;">
+                                <div class="spinner-icon-box">
+                                    <i class="fa-solid fa-radar fa-spin"></i>
+                                </div>
+                                <span class="spinner-text">COMPUTING STFT SPECTROGRAM MATRIX...</span>
+                                <small class="spinner-subtext">Running Short-Time Fourier Transform & PyTorch CNN Inference</small>
+                            </div>
+                        </div>
+
+                        <!-- Interactive Matrix Canvas -->
+                        <div class="spectrogram-view" id="spectrogramCanvasWrapper">
+                            <canvas id="matrixCanvas" width="500" height="300"></canvas>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+
+
+            <!-- RIGHT COLUMN: CLASSIFICATION RESULT CARD -->
+            <section class="panel result-panel">
+                <div class="panel-header">
+                    <h2><i class="fa-solid fa-shield-halved"></i> [MOD-03: TARGET REPORT]</h2>
+                </div>
+                <div class="panel-body">
+                    
+                    <!-- THREAT VERDICT BADGE -->
+                    <div class="verdict-card neutral" id="verdictCard">
+                        <div class="verdict-badge" id="verdictBadge">
+                            <i class="fa-solid fa-circle-nodes" id="verdictIcon"></i>
+                            <span id="verdictText">AWAITING RADAR SIGNAL</span>
+                        </div>
+                        <p class="verdict-subtext" id="verdictSubtext">Select a sample or upload a signal to trigger PyTorch CNN inference.</p>
+                    </div>
+
+                    <!-- CONFIDENCE GAUGE & PROBABILITIES -->
+                    <div class="confidence-box">
+                        <div class="confidence-header">
+                            <span>MODEL CONFIDENCE SCORE</span>
+                            <strong id="confidenceScoreText">0.0%</strong>
+                        </div>
+                        <div class="confidence-progress-bar">
+                            <div class="progress-fill" id="confidenceProgressFill" style="width: 0%;"></div>
+                        </div>
+
+                        <!-- PROBABILITY DISTRIBUTION BREAKDOWN -->
+                        <div class="prob-distribution">
+                            <div class="prob-item">
+                                <div class="prob-labels">
+                                    <span><i class="fa-solid fa-helicopter text-danger"></i> HOSTILE DRONE</span>
+                                    <strong id="probDrone">0.0%</strong>
+                                </div>
+                                <div class="mini-progress"><div class="mini-fill bg-drone" id="probDroneFill" style="width:0%"></div></div>
+                            </div>
+
+                            <div class="prob-item">
+                                <div class="prob-labels">
+                                    <span><i class="fa-solid fa-crow text-success"></i> SAFE BIRD</span>
+                                    <strong id="probBird">0.0%</strong>
+                                </div>
+                                <div class="mini-progress"><div class="mini-fill bg-bird" id="probBirdFill" style="width:0%"></div></div>
+                            </div>
+
+                            <div class="prob-item">
+                                <div class="prob-labels">
+                                    <span><i class="fa-solid fa-wave-square text-muted"></i> AMBIENT NOISE</span>
+                                    <strong id="probNoise">0.0%</strong>
+                                </div>
+                                <div class="mini-progress"><div class="mini-fill bg-noise" id="probNoiseFill" style="width:0%"></div></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- FEATURE METRICS BREAKDOWN -->
+                    <div class="features-box">
+                        <h3><i class="fa-solid fa-microchip"></i> EXTRACTED MICRO-DOPPLER METRICS</h3>
+                        <table class="feature-table">
+                            <tbody>
+                                <tr>
+                                    <td>BULK DOPPLER SHIFT:</td>
+                                    <td><strong id="metricDoppler">-- HZ</strong> (<span id="metricVelocity">-- M/S</span>)</td>
+                                </tr>
+                                <tr>
+                                    <td>MODULATION BANDWIDTH ($\Delta F$):</td>
+                                    <td><strong id="metricBandwidth">-- HZ</strong></td>
+                                </tr>
+                                <tr>
+                                    <td>MICRO-DOPPLER MOD RATE ($F_M$):</td>
+                                    <td><strong id="metricModRate">-- HZ</strong></td>
+                                </tr>
+                                <tr>
+                                    <td>SPECTRAL CENTROID:</td>
+                                    <td><strong id="metricCentroid">-- HZ</strong></td>
+                                </tr>
+                                <tr>
+                                    <td>HARMONIC ENERGY RATIO:</td>
+                                    <td><strong id="metricHarmonic">--</strong></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                </div>
+            </section>
+
+        </main>
+
+
+        <!-- BOTTOM SECTION: CLASSIFICATION HISTORY LOG TABLE -->
+        <section class="panel history-panel">
+            <div class="panel-header">
+                <h2><i class="fa-solid fa-clock-rotate-left"></i> [MOD-04: RADAR CLASSIFICATION LOG HISTORY]</h2>
+                <div class="history-actions">
+                    <button class="btn btn-sm btn-outline" id="btnRefreshHistory"><i class="fa-solid fa-arrows-rotate"></i> [ REFRESH ]</button>
+                    <button class="btn btn-sm btn-danger" id="btnClearHistory"><i class="fa-solid fa-trash-can"></i> [ CLEAR LOGS ]</button>
+                </div>
+            </div>
+            <div class="panel-body table-responsive">
+                <table class="history-table">
+                    <thead>
+                        <tr>
+                            <th>SCAN ID</th>
+                            <th>TIMESTAMP</th>
+                            <th>FILENAME / TARGET</th>
+                            <th>VERDICT</th>
+                            <th>CONFIDENCE</th>
+                            <th>DOPPLER SHIFT (HZ)</th>
+                            <th>MOD. BANDWIDTH (HZ)</th>
+                            <th>HARMONIC RATIO</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historyTableBody">
+                        <tr>
+                            <td colspan="8" class="empty-table">NO RADAR CLASSIFICATION LOGS RECORDED YET.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    </div>
+
+    <!-- JavaScript Files -->
+    <script src="{{ url_for('static', filename='js/spectrogram.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
